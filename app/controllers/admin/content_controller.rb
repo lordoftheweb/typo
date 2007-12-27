@@ -3,14 +3,24 @@ require 'base64'
 class Admin::ContentController < Admin::BaseController
   def index
     list
-    render_action 'list'
+    render :action => 'list'
   end
 
   def list
+    if params[:order] and params[:order] =~ /title|created_at|author|state/
+      if params[:sense] and params[:sense] == 'desc'
+        order = params[:order] + " asc"
+      else
+        order = params[:order] + " desc"        
+      end
+    else
+      order = 'id DESC'
+    end
+
     now = Time.now
-    count = this_blog.articles.count
+    count = this_blog.articles.size
     @articles_pages = Paginator.new(self, count, 15, params[:id])
-    @articles = this_blog.articles.find(:all, :limit => 15, :order => 'id DESC',
+    @articles = this_blog.articles.find(:all, :limit => 15, :order => order,
                                         :offset => @articles_pages.current.offset)
     setup_categories
     @article = this_blog.articles.build(params[:article])
@@ -48,7 +58,7 @@ class Admin::ContentController < Admin::BaseController
 
   def preview
     headers["Content-Type"] = "text/html; charset=utf-8"
-    @article = this_blog.articles.build 
+    @article = this_blog.articles.build
     @article.attributes = params[:article]
     set_article_author
     data = render_to_string(:layout => "minimal")
@@ -133,8 +143,8 @@ class Admin::ContentController < Admin::BaseController
 
   def set_article_author
     return if @article.author
-    @article.author = session[:user].login
-    @article.user   = session[:user]
+    @article.author = current_user.login
+    @article.user   = current_user
   end
 
   def save_attachments

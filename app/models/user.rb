@@ -13,6 +13,10 @@ class User < CachedModel
       find_published(:all, :order => 'created_at DESC')
     end
   end
+  has_many :published_articles,
+    :class_name => 'Article',
+    :conditions => { :published => true },
+    :order      => "published_at DESC"
 
   # echo "typo" | sha1sum -
   @@salt = '20ac4d290c2293702c64b3b287ae5ea79b26a5c1'
@@ -119,6 +123,5 @@ class User < CachedModel
 
   validates_confirmation_of :password, :if=> Proc.new { |u| u.password.size > 0}
   validates_length_of :login, :within => 3..40
-  validates_numericality_of :profile_id, :on => :save
   belongs_to :profile
 end

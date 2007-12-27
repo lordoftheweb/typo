@@ -1,8 +1,48 @@
+module ActionController
+  module Resources
+    class InflectedResource < Resource
+      def member_path
+        @member_path ||= "#{singular_path}/:id"
+      end
+
+      def nesting_path_prefix
+        @nesting_path_prefix ||= "#{singular_path}/:#{singular}_id"
+      end
+
+      protected
+      def singular_path
+        @singular_path ||= "#{path_prefix}/#{singular}"
+      end
+    end
+
+    def inflected_resource(*entities, &block)
+      options = entities.last.is_a?(Hash) ? entities.pop : { }
+      entities.each { |entity| map_inflected_resource entity, options.dup, &block }
+    end
+
+    private
+    def map_inflected_resource(entities, options = { }, &block)
+      resource = InflectedResource.new(entities, options)
+
+      with_options :controller => resource.controller do |map|
+        map_collection_actions(map, resource)
+        map_default_collection_actions(map, resource)
+        map_new_actions(map, resource)
+        map_member_actions(map, resource)
+
+        if block_given?
+          with_options(:path_prefix => resource.nesting_path_prefix, &block)
+        end
+      end
+    end
+  end
+end
+
 ActionController::Routing::Routes.draw do |map|
 
   # default
   map.index '', :controller  => 'articles', :action => 'index'
-  map.admin 'admin', :controller  => 'admin/general', :action => 'index'
+  map.admin 'admin', :controller  => 'admin/dashboard', :action => 'index'
 
   # admin/comments controller needs parent article id
   map.connect 'admin/comments/article/:article_id/:action/:id',
@@ -10,9 +50,6 @@ ActionController::Routing::Routes.draw do |map|
   map.connect 'admin/trackbacks/article/:article_id/:action/:id',
     :controller => 'admin/trackbacks', :action => nil, :id => nil
   map.connect 'admin/content/:action/:id', :controller => 'admin/content'
-
-  # Stats plugin
-  map.connect '/stats/:action', :controller => 'sitealizer'
 
   # make rss feed urls pretty and let them end in .xml
   # this improves caches_page because now apache and webrick will send out the
@@ -36,16 +73,17 @@ ActionController::Routing::Routes.draw do |map|
                               :archives => :get
                             },
                             :member => {
-                              :comment => :post, :trackback => :post,
-                              :nuke_feedback => :delete,
                               :markup_help => :get
                             }) do |dated|
     dated.resources :comments, :new => { :preview => :any }
     dated.resources :trackbacks
+    dated.connect 'trackback', :controller => 'trackbacks', :action => 'create', :conditions => {:method => :post}
   end
 
-    map.connect ':title', 
-    :controller => 'articles', :action => 'show'
+  map.inflected_resource(:categories, :path_prefix => '/articles')
+  map.inflected_resource(:authors, :path_prefix => '/articles')
+  map.inflected_resource(:tags, :path_prefix => '/articles')
+  map.resources(:feedback)
 
   # allow neat perma urls
   map.connect 'articles/page/:page',
@@ -68,16 +106,6 @@ ActionController::Routing::Routes.draw do |map|
         finder.connect 'articles/:year/:month/page/:page',
           :day => nil, :page => /\d+/
         finder.connect 'articles/:year/:month/:day/page/:page', :page => /\d+/
-      end
-    end
-
-    %w(category tag author).each do |value|
-      get.with_options(:action => value, :controller => 'articles') do |m|
-        m.named_route("#{value.pluralize}", "articles/#{value}")
-        m.connect "articles/#{value}/page/:page", :page => /\d+/
-        m.named_route("#{value}", "articles/#{value}/:id")
-        m.named_route("formatted_#{value}", "articles/#{value}/:id.:format")
-        m.connect "articles/#{value}/:id/page/:page", :page => /\d+/
       end
     end
 

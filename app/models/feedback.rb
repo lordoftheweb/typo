@@ -16,7 +16,7 @@ class Feedback < Content
                               :just_presumed_ham, :presumed_ham, :just_marked_as_ham, :ham],
             :handles => [:published?, :status_confirmed?, :just_published?,
                          :mark_as_ham, :mark_as_spam, :confirm_classification,
-                         :withdraw, :before_save,
+                         :withdraw, :before_save, :after_initialize,
                          :send_notifications, :post_trigger, :report_classification])
 
   include States
@@ -40,8 +40,7 @@ class Feedback < Content
 
   def html_postprocess(field, html)
     helper = ContentTextHelpers.new
-    sanitize(helper.auto_link(html),
-             'a href, b, br, i, p, em, strong, pre, code, ol, ul, li, blockquote').nofollowify
+    helper.sanitize(helper.auto_link(html)).nofollowify
   end
 
   def correct_url
@@ -79,8 +78,11 @@ class Feedback < Content
   end
 
   def classify
-    return :spam if blog.default_moderate_comments
-    return :ham unless blog.sp_global
+    begin
+      return :spam if blog.default_moderate_comments
+      return :ham unless blog.sp_global
+    rescue NoMethodError
+    end
 
     # Yeah, three state logic is evil...
     case sp_is_spam? || akismet_is_spam?

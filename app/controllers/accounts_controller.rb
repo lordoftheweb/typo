@@ -5,11 +5,12 @@ class AccountsController < ApplicationController
   def login
     case request.method
       when :post
-      if session[:user] = User.authenticate(params[:user_login], params[:user_password])
+      if user = User.authenticate(params[:user_login], params[:user_password])
+        session[:user_id] = user.id
 
         flash[:notice]  = "Login successful"
         cookies[:is_admin] = "yes"
-        redirect_back_or_default :controller => "admin/content", :action => "index"
+        redirect_back_or_default :controller => "admin/dashboard", :action => "index"
       else
         flash.now[:notice]  = "Login unsuccessful"
 
@@ -27,7 +28,7 @@ class AccountsController < ApplicationController
     @user = User.new(params[:user])
 
     if request.post? and @user.save
-      session[:user] = User.authenticate(@user.login, params[:user][:password])
+      session[:user_id] = @user.id
       flash[:notice]  = "Signup successful"
       redirect_to :controller => "admin/general", :action => "index"
       return
@@ -35,7 +36,7 @@ class AccountsController < ApplicationController
   end
 
   def logout
-    session[:user] = nil
+    session[:user_id] = nil
     cookies.delete :is_admin
   end
 

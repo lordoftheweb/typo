@@ -176,7 +176,12 @@ class Content < ActiveRecord::Base
 
   # Set the text filter for this object.
   def text_filter=(filter)
-    returning(filter.to_text_filter) { |tf| self.text_filter_id = tf.id }
+    returning(filter.to_text_filter) do |tf|
+      if tf.id != text_filter_id
+        changed if !new_record? && published?
+      end
+      self.text_filter_id = tf.id
+    end
   end
 
   # Changing the title flags the object as changed
@@ -184,7 +189,7 @@ class Content < ActiveRecord::Base
     if new_title == self[:title]
       self[:title]
     else
-      self.changed
+      changed if !new_record? && published?
       self[:title] = new_title
     end
   end
@@ -222,16 +227,12 @@ class Content < ActiveRecord::Base
   end
 
   def to_atom xml
-    xml.entry do
-      atom_author(xml)
-      xml.id "urn:uuid:#{guid}"
-      xml.published created_at.xmlschema
-      xml.updated updated_at.xmlschema
-      atom_title(xml)
-      xml.link :rel => 'alternate', :type => 'text/html', :href => permalink_url
-      atom_groupings(xml)
-      atom_enclosures(xml)
-      atom_content(xml)
+    xml.entry self, :url => permalink_url do |entry|
+      atom_author(entry)
+      atom_title(entry)
+      atom_groupings(entry)
+      atom_enclosures(entry)
+      atom_content(entry)
     end
   end
 
@@ -242,11 +243,15 @@ class Content < ActiveRecord::Base
       xml.pubDate published_at.rfc822
       xml.guid "urn:uuid:#{guid}", :isPermaLink => "false"
       rss_author(xml)
+      rss_comments(xml)
       rss_groupings(xml)
       rss_enclosure(xml)
       rss_trackback(xml)
       xml.link permalink_url
     end
+  end
+
+  def rss_comments(xml)
   end
 
   def rss_description(xml)

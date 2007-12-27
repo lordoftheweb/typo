@@ -1,51 +1,11 @@
-class CommentsController < ApplicationController
-  helper :theme
-
-  session :new_session => false
-
-  before_filter :get_article, :only => [:create, :update]
-
-  def index
-    article = nil
-    if params[:article_id]
-      article = this_blog.articles.find_by_params_hash(params)
-      @comments = article.published_comments
-    else
-      limits = this_blog.limit_rss_display.to_i.zero? \
-        ? { } \
-        : {:limit => this_blog.limit_rss_display }
-      @comments = this_blog.comments.find_all_by_published(true, limits.merge(:order => 'created_at DESC'))
-    end
-
-    respond_to do |format|
-      format.html do
-        if article
-          redirect_to "#{article_path(article)}\#comments"
-        else
-          render :text => 'this space left blank'
-        end
-      end
-      @feed_title = "#{this_blog.blog_name} : Comments"
-      format.atom { render :partial => 'articles/atom_feed', :object => @comments }
-      format.rss { render :partial => 'articles/rss20_feed', :object => @comments }
-    end
-  end
+class CommentsController < FeedbackController
+  before_filter :check_request_type, :only => [:create]
 
   def create
-    if ! (this_blog.sp_allow_non_ajax_comments || request.xhr?)
-      render :nothing => true, :status => 401
-      return
+    @comment = @article.with_options(new_comment_defaults) do |art|
+      art.add_comment(params[:comment].symbolize_keys)
     end
 
-    @comment =
-      @article.comments.build(params[:comment]\
-                                .merge( :ip => request.remote_ip,
-                                        :published => true,
-                                        :user => session[:user],
-                                        :user_agent => request.env['HTTP_USER_AGENT'],
-                                        :referrer => request.env['HTTP_REFERER'],
-                                        :permalink => article_path(@article)))
-    @comment.author ||= 'Anonymous'
     set_comment_cookies
 
     if @comment.save
@@ -58,7 +18,7 @@ class CommentsController < ApplicationController
   end
 
   def preview
-    if params[:comment].blank? or params[:comment][:body].blank?
+    if (params[:comment][:body].blank? rescue true)
       render :nothing => true
       return
     end
@@ -71,14 +31,34 @@ class CommentsController < ApplicationController
 
   protected
 
-  def get_article
-    @article = this_blog.published_articles.find_by_params_hash(params)
+  def get_feedback
+    @comments = \
+      if params[:article_id]
+        this_blog.requested_article(params).published_comments
+      else
+        this_blog.published_comments.with_options(this_blog.rss_limit_params) do |c|
+          c.find(:all, :order => 'created_at DESC')
+        end
+      end
+  end
 
-    if @article
-      return true
-    end
+  def new_comment_defaults
+    return { :ip  => request.remote_ip,
+      :author     => 'Anonymous',
+      :published  => true,
+      :user       => current_user,
+      :user_agent => request.env['HTTP_USER_AGENT'],
+      :referrer   => request.env['HTTP_REFERER'],
+      :permalink  => article_path(@article) }
+  end
 
-    render :text => "No such article", :status => 404
+  def set_headers
+    headers["Content-Type"] = "text/html; charset=utf-8"
+  end
+
+  def check_request_type
+    return true if this_blog.sp_allow_non_ajax_comments || request.xhr?
+    render :nothing => true, :status => :bad_request
     return false
   end
 

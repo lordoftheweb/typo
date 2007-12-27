@@ -1,5 +1,4 @@
 require_dependency 'spam_protection'
-require 'sanitize'
 require 'timeout'
 
 class Comment < Feedback
@@ -37,6 +36,9 @@ class Comment < Feedback
 
   def atom_author(xml)
     xml.author { xml.name author }
+  end
+
+  def rss_author(xml)
   end
 
   def atom_title(xml)

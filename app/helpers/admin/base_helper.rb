@@ -26,7 +26,7 @@ module Admin::BaseHelper
   end
 
   def current_user_notice
-    unless session[:user]
+    unless current_user
       link_to "log in", :controller => "/accounts", :action=>"login"
     else
       link_to _("log out"), :controller => "/accounts", :action=>"logout"
@@ -40,13 +40,17 @@ module Admin::BaseHelper
       content_tag :li, link_to(label, options)
     end
   end
+  
+  def subtab(label, style, options = {})
+    content_tag :li, link_to(label, options, {"class"=> style})
+  end
 
   def cancel(url = {:action => 'list'})
     link_to _("Cancel"), url
   end
 
   def save(val = "Store")
-    '<input type="submit" value="' + val + '" class="primary" />'
+    '<input type="submit" value="' + val + '" class="submit" />'
   end
 
   def confirm_delete(val = "Delete")
@@ -54,15 +58,15 @@ module Admin::BaseHelper
   end
 
   def link_to_show(record)
-    link_to image_tag('show.png'), :action => 'show', :id => record.id
+    link_to image_tag('admin/show.png'), :action => 'show', :id => record.id
   end
 
   def link_to_edit(record)
-    link_to image_tag('edit.png', :alt => "edit", :title => "Edit content"), :action => 'edit', :id => record.id
+    link_to image_tag('admin/edit.png', :alt => "edit", :title => "Edit content"), :action => 'edit', :id => record.id
   end
 
   def link_to_destroy(record)
-    link_to image_tag('delete.png', :alt => "delete", :title => "Delete content"), :action => 'destroy', :id => record.id
+    link_to image_tag('admin/delete.png', :alt => "delete", :title => "Delete content"), :action => 'destroy', :id => record.id
   end
 
   def text_filter_options
@@ -80,7 +84,7 @@ module Admin::BaseHelper
   end
 
   def task_quickpost(title)
-    content_tag :li, link_to_function(title, toggle_effect('quick-post', 'Effect.BlindUp', "duration:0.4", "Effect.BlindDown", "duration:0.4"))
+    link_to_function(title, toggle_effect('quick-post', 'Effect.BlindUp', "duration:0.4", "Effect.BlindDown", "duration:0.4"))
   end
 
   def task_quicknav(title)
@@ -129,5 +133,63 @@ module Admin::BaseHelper
 
   def time_delta_from_now_in_words(timestamp)
     distance_of_time_in_words_to_now(timestamp) + ((Time.now < timestamp) ? ' from now' : ' ago')
+  end
+
+  def link_to_bookmarklet
+    "javascript:if(navigator.userAgent.indexOf('Safari') >= 0)" + \
+    "{Q=getSelection();}" + \
+    "else{Q=document.selection?document.selection.createRange().text:document.getSelection();}" + \
+    "location.href='#{this_blog.base_url}/admin/content/new?bookmarklet_text='+encodeURIComponent(Q)" + \
+    "+'&bookmarklet_link='+encodeURIComponent(location.href)+'&bookmarklet_title='+encodeURIComponent(document.title);"
+  end
+    
+  def class_write
+    if controller.controller_name == "content" or controller.controller_name == "pages"
+      if controller.action_name == "new"
+        "current"
+      end
+    end
+  end
+  
+  def class_manage
+    if controller.controller_name  =~ /content|pages|categories|resources/
+      if controller.action_name =~ /list|index|show/
+        "current"
+      end
+    end
+  end
+
+  def class_feedback
+    if controller.controller_name  =~ /feedback/
+    "current"
+    end
+  end
+
+  def class_presentation
+    if controller.controller_name  =~ /sidebar|themes|textfilters/
+    "current"
+    end
+  end
+
+  def class_users
+    if controller.controller_name  =~ /users/
+    "current"
+    end
+  end
+
+  def class_dashboard
+    if controller.controller_name  =~ /dashboard/
+    "current"
+    end
+  end    
+
+  def class_admin
+    if controller.controller_name  =~ /general|advanced/
+    "current"
+    end
+  end
+  
+  def order_link(title, controller, action, order)
+    link_to _(title), :controller => controller, :action => action, :order => order, :sense => (params[:sense] and params[:sense] == 'asc') ?  'desc' : 'asc'
   end
 end

@@ -44,7 +44,7 @@ module LoginSystem
       return true
     end
 
-    if session[:user] and authorize?(session[:user])
+    if current_user && authorize?(current_user)
       return true
     end
 
@@ -77,7 +77,7 @@ module LoginSystem
     if session[:return_to].nil?
       redirect_to default
     else
-      redirect_to_url session[:return_to]
+      redirect_to session[:return_to]
       session[:return_to] = nil
     end
   end

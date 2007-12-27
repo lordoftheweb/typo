@@ -9,6 +9,7 @@ end
 
 describe 'ArticlesController' do
   controller_name :articles
+  Article.delete_all
   fixtures(:contents, :feedback, :categories, :blogs, :users, :categorizations,
            :text_filters, :articles_tags, :tags, :blacklist_patterns, :resources,
            :sidebars)
@@ -18,28 +19,18 @@ describe 'ArticlesController' do
       raise SocketError.new("getaddrinfo: Name or service not known")
     end
     CachedModel.cache_reset
+    controller.send(:reset_blog_ids)
   end
 
-  it 'can get a category when permalink == name' do
-    get 'category', :id => 'software'
-
-    assigns[:page_title].should == 'category software'
-    response.should render_template('index')
+  it "should redirect category to /articles/categories" do
+    get 'category'
+    response.should redirect_to(categories_path)
   end
 
-  it 'can get a category index when permalink != name' do
-    get 'category', :id => 'weird-permalink'
-
-    assigns[:page_title].should == "category weird-permalink"
-    response.should render_template('index')
+  it "should redirect tag to /articles/tags" do
+    get 'tag'
+    response.should redirect_to(tags_path)
   end
-
-  it 'can get an empty category' do
-    get 'category', :id => 'life-on-mars'
-    response.should render_template('error')
-    assigns[:message].should == "Can't find posts with category 'life-on-mars'"
-  end
-
 
   it 'index' do
     get 'index'
@@ -67,36 +58,6 @@ describe ArticlesController, "feeds" do
   specify "/articles.rss => an RSS 2.0 feed" do
     get 'index', :format => 'rss'
     response.should be_success
-    response.should render_template("_rss20_feed")
-  end
-
-  specify "articles/category/foo.atom => atom feed" do
-    get 'category', :id => 'foo', :format => 'atom'
-    response.should render_template("_atom_feed")
-  end
-
-  specify "articles/category/foo.rss => rss feed" do
-    get 'category', :id => 'foo', :format => 'rss'
-    response.should render_template("_rss20_feed")
-  end
-
-  specify "articles/tag/foo.atom => atom feed" do
-    get 'tag', :id => 'foo', :format => 'atom'
-    response.should render_template("_atom_feed")
-  end
-
-  specify "articles/tag/foo.rss => rss feed" do
-    get 'tag', :id => 'foo', :format => 'rss'
-    response.should render_template("_rss20_feed")
-  end
-
-  specify "articles/author/foo.atom => atom feed" do
-    get 'author', :id => 'foo', :format => 'atom'
-    response.should render_template("_atom_feed")
-  end
-
-  specify "articles/author/foo.rss => rss feed" do
-    get 'author', :id => 'foo', :format => 'rss'
     response.should render_template("_rss20_feed")
   end
 

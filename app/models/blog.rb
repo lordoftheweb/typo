@@ -6,7 +6,7 @@ class BlogRequest
   def initialize(root)
     @protocol = @host_with_port = @path = ''
     @symbolized_path_parameters = {}
-    @relative_url_root = root.gsub(%r{/^},'')
+    @relative_url_root = root.gsub(%r{/$},'')
   end
 end
 
@@ -22,11 +22,25 @@ class Blog < CachedModel
   has_many :trackbacks
   has_many :articles
   has_many :comments
-  has_many :pages, :order => "id DESC"
-  has_many(:published_articles, :class_name => "Article",
+  has_many(:published_comments,
+           :class_name => 'Comment',
            :conditions => {:published => true},
-           :include => [:categories, :tags],
-           :order => "contents.published_at DESC") do
+           :order      => 'feedback.published_at DESC')
+  has_many(:published_trackbacks,
+           :class_name => 'Trackback',
+           :conditions => {:published => true},
+           :order      => 'feedback.published_at DESC')
+  has_many(:published_feedback,
+           :class_name => 'Feedback',
+           :conditions => {:published => true},
+           :order      => 'feedback.published_at DESC')
+  has_many(:pages,
+           :order      => "id DESC")
+  has_many(:published_articles,
+           :class_name => "Article",
+           :conditions => {:published => true},
+           :include    => [:categories, :tags],
+           :order      => "contents.published_at DESC") do
     def before(date = Time.now)
       find(:all, :conditions => ["contents.created_at < ?", date])
     end
@@ -43,6 +57,8 @@ class Blog < CachedModel
   setting :title_prefix,               :integer, 0
   setting :geourl_location,            :string, ''
   setting :canonical_server_url,       :string, ''  # Deprecated
+  setting :lang,                       :string, 'en_US'
+  setting :display_advanced,           :integer, 0
 
   # Spam
   setting :sp_global,                  :boolean, false
@@ -71,13 +87,14 @@ class Blog < CachedModel
   setting :default_moderate_comments,  :boolean, false
   setting :link_to_author,             :boolean, false
   setting :show_extended_on_rss,       :boolean, true
-  setting :theme,                      :string, 'azure'
+  setting :theme,                      :string, 'standard_issue'
   setting :use_gravatar,               :boolean, false
   setting :global_pings_disable,       :boolean, false
   setting :ping_urls,                  :string, "http://rpc.technorati.com/rpc/ping\nhttp://ping.blo.gs/\nhttp://rpc.weblogs.com/RPC2"
   setting :send_outbound_pings,        :boolean, true
   setting :email_from,                 :string, 'typo@example.com'
   setting :editor,                     :integer, 1
+  setting :cache_option,               :string, 'caches_action_with_params'
 
   # Jabber config
   setting :jabber_address,             :string, ''
@@ -109,14 +126,20 @@ class Blog < CachedModel
   end
 
   def ping_article!(settings)
+    unless global_pings_enabled? && settings.has_key?(:url) && settings.has_key(:id)
+      raise ActiveRecord::RecordInvalid
+    end
     settings[:blog_id] = self.id
-    article_id = settings[:id]
-    settings.delete(:id)
+    article_id = settings.delete(:article_id)
     article = published_articles.find(article_id)
     unless article.allow_pings?
       throw :error, "Trackback not saved"
     end
     article.trackbacks.create!(settings)
+  end
+
+  def global_pings_enabled?
+    ! global_pings_disable?
   end
 
   # Check that all required blog settings have a value.
@@ -188,6 +211,25 @@ class Blog < CachedModel
   def current_theme_path  # :nodoc:
     typo_deprecated "use current_theme.path"
     Theme.themes_root + "/" + theme
+  end
+
+  def requested_article(params)
+    published_articles.find_by_params_hash(params)
+  end
+
+  def requested_articles(params)
+    published_articles.find_all_by_date(*params.values_at(:year, :month, :day))
+  end
+
+  def articles_matching(query)
+    published_articles.search(query)
+  end
+
+  def rss_limit_params
+    limit = limit_rss_display.to_i
+    return limit.zero? \
+      ? {} \
+      : {:limit => limit}
   end
 end
 

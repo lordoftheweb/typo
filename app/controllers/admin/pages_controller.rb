@@ -3,11 +3,21 @@ require 'base64'
 class Admin::PagesController < Admin::BaseController
   def index
     list
-    render_action 'list'
+    render :action => 'list'
   end
 
   def list
-    @pages = Page.find(:all, :order => "id DESC")
+    if params[:order] and params[:order] =~ /title|created_at|state/
+      if params[:sense] and params[:sense] == 'desc'
+        order = params[:order] + " asc"
+      else
+        order = params[:order] + " desc"        
+      end
+    else
+      order = 'title ASC'
+    end
+
+    @pages = Page.find(:all, :order => order)
     @page = Page.new(params[:page])
     @page.text_filter ||= this_blog.text_filter
   end
@@ -18,7 +28,7 @@ class Admin::PagesController < Admin::BaseController
 
   def new
     @page = Page.new(params[:page])
-    @page.user_id = session[:user].id
+    @page.user_id = current_user.id
     @page.text_filter ||= this_blog.text_filter
     if request.post? and @page.save
       flash[:notice] = 'Page was successfully created.'

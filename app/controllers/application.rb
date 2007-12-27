@@ -1,25 +1,55 @@
 # The filters added to this controller will be run for all controllers in the application.
 # Likewise will all the methods added be available for all controllers.
 class ApplicationController < ActionController::Base
-  include LoginSystem
-  include Sitealizer
-  before_filter :use_sitealizer, :reset_local_cache, :fire_triggers
+  include ::LoginSystem
+  before_filter :reset_local_cache, :fire_triggers, :load_lang
   after_filter :reset_local_cache
 
+  class << self
+    unless self.respond_to? :template_root
+      def template_root
+        view_paths.first
+      end
+    end
+  end
 
   protected
 
+  def setup_themer
+    # Ick!
+    response.template.view_paths = @@view_paths[self.class.name] =
+      ["#{RAILS_ROOT}/themes/#{this_blog.theme}/views",
+       "#{RAILS_ROOT}/app/views"]
+  end
+
+  def error(message = "Record not found...", options = { })
+    @message = message.to_s
+    render :template => 'articles/error', :status => options[:status] || 404
+  end
+
+  def current_user
+    if @current_user.nil?
+      @current_user = session[:user_id] && User.find(session[:user_id])
+    end
+    @current_user
+  end
+  helper_method :current_user
+
   def authorized?
-    session[:user] && session[:user].reload && authorize?
+    current_user && authorize?(current_user)
   end
 
   def fire_triggers
     Trigger.fire
   end
 
+  def load_lang
+    Localization.lang = this_blog.lang if this_blog.lang != 'en_US'
+  end
+
   def reset_local_cache
     CachedModel.cache_reset
-    session[:user].reload if session[:user]
+    @current_user = nil
   end
 
   # Axe?
@@ -45,7 +75,13 @@ class ApplicationController < ActionController::Base
                 end
               end
   end
+
   helper_method :this_blog
+
+
+  def reset_blog_ids
+    @@blog_id_for = {}
+  end
 
   # The base URL for this request, calculated by looking up the URL for the main
   # blog index page.  This is matched with Blog#base_url to determine which Blog
@@ -57,18 +93,6 @@ class ApplicationController < ActionController::Base
   def add_to_cookies(name, value, path=nil, expires=nil)
     cookies[name] = { :value => value, :path => path || "/#{controller_name}",
                        :expires => 6.weeks.from_now }
-  end
-
-  def self.include_protected(*modules)
-    modules.reverse.each do |mod|
-      included_methods = mod.public_instance_methods.reject do |meth|
-        self.method_defined?(meth)
-      end
-      self.send(:include, mod)
-      included_methods.each do |meth|
-        protected meth
-      end
-    end
   end
 end
 

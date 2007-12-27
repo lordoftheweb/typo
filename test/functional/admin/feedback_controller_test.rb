@@ -8,13 +8,13 @@ class Admin::FeedbackController; def rescue_action(e) raise e end; end
 
 class Admin::FeedbackControllerTest < Test::Unit::TestCase
   fixtures :contents, :users, :resources, :text_filters,
-           :blogs, :categorizations, :feedback
+           :blogs, :categorizations, :feedback, :blacklist_patterns, :categories
 
   def setup
     @controller = Admin::FeedbackController.new
     @request    = ActionController::TestRequest.new
     @response   = ActionController::TestResponse.new
-    @request.session = { :user => users(:tobi) }
+    @request.session = { :user_id => users(:tobi).id }
   end
 
   def test_index

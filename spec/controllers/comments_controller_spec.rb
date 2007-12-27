@@ -25,15 +25,23 @@ describe "All Requests", :shared => true do
   end
 
   before do
-    @articles = mock('articles')
-    @comments = mock('comments')
-    @article  = mock_model(Article, :comments => @comments,
-                           :published_comments => @comments)
-    @comment  = mock_model(Comment)
-    @blog     = mock_model(Blog, :sp_allow_non_ajax_comments => true, :blog_name => "A Blog",
-                           :theme => 'azure', :articles => @articles, :published_articles => @articles)
+    @comment  = mock_model(Comment,
+                  :save                       => true,
+                  :author                     => 'bob',
+                  :email                      => 'bob@home',
+                  :url                        => 'http://bobs.home/')
+    @article  = mock_model(Article,
+                  :comments                   => @comments,
+                  :published_comments         => @comments,
+                  :add_comment                => @comment)
+    @blog     = mock_model(Blog,
+                  :sp_allow_non_ajax_comments => true,
+                  :lang                       => 'en_US',
+                  :blog_name                  => "A Blog",
+                  :theme                      => 'azure',
+                  :articles                   => @articles,
+                  :requested_article          => @article)
 
-    @articles.stub!(:find_by_params_hash).and_return(@article)
     @article.stub!(:to_param).and_return(['2007', '10', '11', 'slug'])
     Article.stub!(:find).and_return(@article)
 
@@ -48,6 +56,7 @@ describe "General Comment Creation", :shared => true do
 
   before do
     @article.stub!(:permalink_url).and_return('foo')
+    @article.stub!(:add_comment).and_return(@comment)
     @comments.stub!(:build).and_return(@comment)
     @comment.stub!(:save).and_return(true)
     @comment.stub!(:author).and_return('bob')
@@ -70,9 +79,12 @@ describe "General Comment Creation", :shared => true do
     make_the_request
   end
 
-  it "should set a default author" do
-    @comment.should_receive(:author).at_least(:once).and_return(nil)
-    @comment.should_receive(:author=).with('Anonymous')
+  it "should set the author" do
+    @article.should_receive(:add_comment) do |opts|
+      opts[:author].should == 'bob'
+      @comment
+    end
+
     make_the_request
   end
 
@@ -94,11 +106,9 @@ describe "General Comment Creation", :shared => true do
   end
 
   it "should create a comment" do
-    @blog.should_receive(:published_articles).and_return(@articles)
-    @articles.should_receive(:find_by_params_hash).and_return(@article)
-    @article.should_receive(:comments).and_return(@comments)
+    @blog.should_receive(:requested_article).and_return(@article)
+    @article.should_receive(:add_comment).and_return(@comment)
     @article.should_receive(:to_param).at_least(:once).and_return(['2007', '10', '11', 'slug'])
-    @comments.should_receive(:build).and_return(@comment)
 
     make_the_request
   end
@@ -115,7 +125,7 @@ describe CommentsController, 'create' do
   it "should throw an error if sp_allow_non_ajax_comments is false and there are no xhr headers" do
     @blog.should_receive(:sp_allow_non_ajax_comments).and_return(false)
     make_the_request
-    response.response_code.should == 401
+    response.response_code.should == 400
   end
 
   it "should redirect to the article" do
@@ -167,6 +177,7 @@ end
 describe CommentsController, 'GET /comments' do
   before do
     @the_mock = mock('blog', :null_object => true)
+    @the_mock.stub!(:lang).and_return('en_US')
     Blog.stub!(:find).and_return(@the_mock)
   end
 
@@ -175,47 +186,19 @@ describe CommentsController, 'GET /comments' do
     response.should be_success
   end
 
-  it "should limit the comments if !this_blog.limit_rss_display.to_i.zero? " do
+  it "should not bother fetching any comments " do
     mock_comments = mock('comments')
-    @the_mock.should_receive(:comments).and_return(mock_comments)
-    @the_mock.should_receive(:limit_rss_display).at_least(:once).and_return(20)
-    mock_comments.should_receive(:find_all_by_published).with(true, :limit => 20, :order => 'created_at DESC').and_return("Comments")
-    get 'index'
-  end
+    @the_mock.should_not_receive(:published_comments)
+    @the_mock.should_not_receive(:rss_limit_params)
 
-  it "should not limit the comments if this_blog.limit_rss_display is 0" do
-    mock_comments = mock('comments')
-    @the_mock.should_receive(:comments).and_return(mock_comments)
-    @the_mock.should_receive(:limit_rss_display).at_least(:once).and_return(0)
-    mock_comments.should_receive(:find_all_by_published).with(true, :order => 'created_at DESC').and_return("Comments")
     get 'index'
-  end
-
-  it "should not limit the comments if this_blog.limit_rss_display is nil" do
-    mock_comments = mock('comments')
-    @the_mock.should_receive(:comments).and_return(mock_comments)
-    @the_mock.should_receive(:limit_rss_display).at_least(:once).and_return(nil)
-    mock_comments.should_receive(:find_all_by_published).with(true, :order => 'created_at DESC').and_return("Comments")
-    get 'index'
-  end
-
-  it "should not limit the comments if this_blog.limit_rss_display is ''" do
-    mock_comments = mock('comments')
-    @the_mock.should_receive(:comments).and_return(mock_comments)
-    @the_mock.should_receive(:limit_rss_display).at_least(:once).and_return('')
-    mock_comments.should_receive(:find_all_by_published).with(true, :order => 'created_at DESC').and_return("Comments")
-    get 'index'
-  end
-
-  it "should assign @comments" do
-    get 'index'
-    assigns[:comments].should_not be_nil
   end
 end
 
 describe CommentsController, "GET /comments.:format" do
   before do
     @the_mock = mock('blog', :null_object => true)
+    @the_mock.stub!(:lang).and_return('en_US')
     Blog.stub!(:find).and_return(@the_mock)
   end
 
@@ -230,5 +213,4 @@ describe CommentsController, "GET /comments.:format" do
     response.should be_success
     response.should render_template("articles/_rss20_feed")
   end
-
 end

@@ -17,12 +17,13 @@ class Article < Content
   has_many :feedback,                           :order => "created_at DESC"
   has_many :resources, :order => "created_at DESC",
            :class_name => "Resource", :foreign_key => 'article_id'
+  
   has_many :categorizations
-  has_many :categories, :through => :categorizations, :uniq => true do
-    def push_with_attributes(cat, join_attrs = { :is_primary => false })
-      Categorization.with_scope(:create => join_attrs) { self << cat }
-    end
-  end
+  has_many :categories, \
+    :through => :categorizations, \
+    :uniq => true, \
+    :order => 'categorizations.is_primary DESC, categories.position'
+  
   has_and_belongs_to_many :tags, :foreign_key => 'article_id'
   belongs_to :user
   has_many :triggers, :as => :pending_item
@@ -44,20 +45,41 @@ class Article < Content
   include States
 
   def stripped_title
-    self.title.gsub(/<[^>]*>/,'').to_url
+    str = String.new(self.title)
+    
+    accents = { ['á','à','â','ä','ã','Ã','Ä','Â','À'] => 'a',
+      ['é','è','ê','ë','Ë','É','È','Ê'] => 'e',
+      ['í','ì','î','ï','I','Î','Ì'] => 'i',
+      ['ó','ò','ô','ö','õ','Õ','Ö','Ô','Ò'] => 'o',
+      ['œ'] => 'oe',
+      ['ß'] => 'ss',
+      ['ú','ù','û','ü','U','Û','Ù'] => 'u',
+      ['ç','Ç'] => 'c'
+      }
+    accents.each do |ac,rep|
+      ac.each do |s|
+        str.gsub!(s, rep)
+      end
+    end
+    
+    str.gsub(/<[^>]*>/,'').to_url
+  end
+  
+  def permalink_url_options(nesting = false)
+    {:year => published_at.year,
+     :month => sprintf("%.2d", published_at.month),
+     :day => sprintf("%.2d", published_at.day),
+     :controller => 'articles',
+     :action => 'show',
+     (nesting ? :article_id : :id) => permalink}
   end
 
   def permalink_url(anchor=nil, only_path=true)
     @cached_permalink_url ||= {}
     @cached_permalink_url["#{anchor}#{only_path}"] ||= \
-      blog.url_for(:year => published_at.year,
-                   :month => sprintf("%.2d", published_at.month),
-                   :day => sprintf("%.2d", published_at.day),
-                   :id => permalink,
-                   :anchor => anchor,
-                   :only_path => only_path,
-                   :controller => '/articles',
-                   :action => 'show')
+      blog.with_options(permalink_url_options) do |b|
+        b.url_for(:anchor => anchor, :only_path => only_path)
+      end
   end
 
   def param_array
@@ -75,7 +97,7 @@ class Article < Content
   end
 
   def trackback_url
-    blog.url_for(:controller => "articles", :action =>"trackback", :id => id)
+    blog.url_for(permalink_url_options(true).merge(:controller => 'trackbacks', :action => 'index'))
   end
 
   def feed_url(format = :rss20)
@@ -238,8 +260,8 @@ class Article < Content
 
   def notify_user_via_jabber(user)
     if user.notify_via_jabber?
-      JabberNotify.send_message(user, "New post",
-                                "A new message was posted to #{blog.blog_name}",
+      JabberNotify.send_message(user, _("New post"),
+                                _("A new message was posted to ") +  blog.blog_name,
                                 html(:body))
     end
   end
@@ -253,15 +275,36 @@ class Article < Content
       self.created_at.to_i > self.blog.sp_article_auto_close.days.ago.to_i
   end
 
+  def cast_to_boolean(value)
+    ActiveRecord::ConnectionAdapters::Column.value_to_boolean(value)
+  end
   # Cast the input value for published= before passing it to the state.
   def published=(newval)
-    state.published = ActiveRecord::ConnectionAdapters::Column.value_to_boolean(newval)
+    state.published = cast_to_boolean(newval)
   end
 
   # Bloody rails reloading. Nasty workaround.
+  def allow_comments=(newval)
+    returning(cast_to_boolean(newval)) do |val|
+      if self[:allow_comments] != val
+        changed if published?
+        self[:allow_comments] = val
+      end
+    end
+  end
+
+  def allow_pings=(newval)
+    returning(cast_to_boolean(newval)) do |val|
+      if self[:allow_pings] != val
+        changed if published?
+        self[:allow_pings] = val
+      end
+    end
+  end
+
   def body=(newval)
     if self[:body] != newval
-      changed
+      changed if published?
       self[:body] = newval
     end
     self[:body]
@@ -274,7 +317,7 @@ class Article < Content
 
   def extended=(newval)
     if self[:extended] != newval
-      changed
+      changed if published?
       self[:extended] = newval
     end
     self[:extended]
@@ -298,6 +341,7 @@ class Article < Content
     [:body, :extended]
   end
 
+  ## Feed Stuff
   def rss_trackback(xml)
     return unless allow_pings?
     xml.trackback :ping, trackback_url
@@ -306,7 +350,7 @@ class Article < Content
   def rss_enclosure(xml)
     return if resources.empty?
     res = resources.first
-    xml.enclosure(:url    => :blog.file_url(res.file_name),
+    xml.enclosure(:url    => blog.file_url(res.filename),
                   :length => res.size,
                   :type   => res.mime)
   end
@@ -317,7 +361,13 @@ class Article < Content
   end
 
   def rss_author(xml)
-    xml.author(link_to_author? ? "#{user.email} (#{user.name})" : user.name)
+    if link_to_author?
+      xml.author("#{user.email} (#{user.name})")
+    end
+  end
+
+  def rss_comments(xml)
+    xml.comments(permalink_url + "#comments")
   end
 
   def link_to_author?
@@ -357,6 +407,14 @@ class Article < Content
     if blog.show_extended_on_rss
       xml.content html(:all), "type" => "html"
     end
+  end
+
+  def add_comment(params)
+    comments.build(params)
+  end
+  
+  def add_category(category, is_primary = false)
+    self.categorizations.build(:category => category, :is_primary => is_primary)
   end
 
   protected

@@ -1,3 +1,15 @@
+class Bare1Category < ActiveRecord::Base
+  include BareMigration
+end
+
+class Bare1Article < ActiveRecord::Base
+  include BareMigration
+end
+
+class Bare1ArticlesCategory < ActiveRecord::Base
+  include BareMigration
+end
+
 class InitialSchema < ActiveRecord::Migration
   def self.up
     ActiveRecord::Base.transaction do
@@ -31,11 +43,14 @@ class InitialSchema < ActiveRecord::Migration
         t.column :position, :integer
       end
 
-      create_table :articles_categories, :id => false do |t|
-        t.column :article_id, :integer
-        t.column :category_id, :integer
-        t.column :is_primary, :integer
-      end
+      article = Bare1Article.create(:title=>'Hello World!',
+        :author=>'Mr Typo',
+        :body=>'Welcome to Typo. This is your first article. Edit or delete it, then start blogging!',
+        :allow_comments => 1,
+        :allow_pings =>1,
+        :published => 1,
+        :permalink => 'hello-world'
+      )
 
       create_table :blacklist_patterns do |t|
         t.column :type, :string
